@@ -54,19 +54,40 @@ def _hex_to_rgba(hex_str: str, alpha: int = 255) -> Tuple[int, int, int, int]:
 def _wrap(text: str, font: ImageFont.FreeTypeFont, max_px: int) -> List[str]:
     if not text:
         return []
+
+    def _text_w(t: str) -> int:
+        bb = font.getbbox(t)
+        return bb[2] - bb[0]
+
+    def _chunk_word(word: str) -> List[str]:
+        chunks, cur = [], ""
+        for ch in word:
+            if _text_w(cur + ch) <= max_px:
+                cur += ch
+            else:
+                if cur:
+                    chunks.append(cur)
+                cur = ch
+        if cur:
+            chunks.append(cur)
+        return chunks or [word]
+
     words = text.split()
     lines = []
     cur = ""
     for word in words:
         candidate = (cur + " " + word).strip()
-        bb = font.getbbox(candidate)
-        w = bb[2] - bb[0]
-        if w <= max_px:
+        if _text_w(candidate) <= max_px:
             cur = candidate
         else:
             if cur:
                 lines.append(cur)
-            cur = word
+            if _text_w(word) > max_px:
+                chunks = _chunk_word(word)
+                lines.extend(chunks[:-1])
+                cur = chunks[-1]
+            else:
+                cur = word
     if cur:
         lines.append(cur)
     return lines or [""]
@@ -97,11 +118,17 @@ def render_presentation(
 
     # Parse and sort events
     parsed = []
-    from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment
+    from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment, get_override_category
     from iris_timelineexport_module.timeline_handler.png_renderer import _to_utc, _parse_comment
     for ev in events_raw:
         dt = _to_utc(ev.event_date, ev.event_tz)
         cat = ev.category[0].name if ev.category else "Unknown"
+        try:
+            override = get_override_category(ev)
+            if override:
+                cat = override
+        except Exception:
+            pass
         title = (ev.event_title or "").strip()
         try:
             comment = get_comment(ev)
@@ -122,9 +149,6 @@ def render_presentation(
         img = Image.new("RGBA", (W, H), C_BG_TRANS)
         draw = ImageDraw.Draw(img)
 
-        # Draw Center Line
-        draw.line([(100, CY), (W - 100, CY)], fill=C_CENTER_LINE, width=12)
-
         # Group events in this chunk by day
         day_events = {}
         for ev in chunk:
@@ -133,23 +157,36 @@ def render_presentation(
                 day_events[day] = []
             day_events[day].append(ev)
 
-        # We will split the timeline into total segments based on day transitions
-        total_events = len(chunk)
-        num_day_transitions = len(day_events)
+        # Space events evenly using the actual number of items in this chunk
+        # (events + day markers), not the slide capacity.
+        actual_items = len(chunk) + len(day_events)
+        # x_origin: center of the Day marker — small box so needs little padding
+        # x_last: center of the last event box — full-width box needs more padding
+        DAY_BOX_HALF = 120   # half of DAY_BOX_W=240
+        EVT_BOX_HALF = 500   # half of max BOX_W=1000
+        EDGE_PAD     = 40    # cosmetic gap between box edge and canvas edge
+        x_origin = DAY_BOX_HALF + EDGE_PAD
+        x_last   = W - EVT_BOX_HALF - EDGE_PAD
+        MAX_SEGMENT  = (x_last - x_origin) // (events_per_slide)  # cap spacing at full-slide density
+        segment_width = min(MAX_SEGMENT, (x_last - x_origin) // (actual_items - 1)) if actual_items > 1 else MAX_SEGMENT
 
-        segment_width = W // (events_per_slide + num_day_transitions + 1)
-        
-        BOX_W = min(1000, (segment_width * 2) - 80)
+        # Center line spans only the actual content
+        LINE_MARGIN = segment_width // 2
+        draw.line([(max(100, x_origin - LINE_MARGIN), CY),
+                   (min(W - 100, x_last + LINE_MARGIN), CY)],
+                  fill=C_CENTER_LINE, width=12)
+
+        BOX_W = min(1000, segment_width * 2 - 80)
         BOX_PAD = 40
         MAX_TEXT_W = BOX_W - (BOX_PAD * 2) - 20  # extra 20px margin for font measurement inaccuracies
-        
-        pos_idx = 1
+
+        pos_idx = 0
         is_top = True # Start with top for each slide
 
         for day in sorted(day_events.keys()):
             # Draw day separator
             day_label = f"Day {day_num_map[day]}"
-            x = segment_width * pos_idx
+            x = x_origin + segment_width * pos_idx
 
             # Day Separator Node / Box
             DAY_BOX_W = 240
@@ -172,7 +209,7 @@ def render_presentation(
             is_top = True
             
             for ev_data in day_events[day]:
-                x = segment_width * pos_idx
+                x = x_origin + segment_width * pos_idx
 
                 # ── Build text content ─────────────────────────────────────────
                 time_str = ev_data["dt"].strftime("%H:%M UTC")

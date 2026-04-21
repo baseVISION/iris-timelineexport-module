@@ -9,11 +9,12 @@ co-exists with any other module's tabs.
 
 from __future__ import annotations
 
-ATTRIBUTE_FOR   = "event"
-ATTRIBUTE_TAB   = "Timeline Export"
-FIELD_INCLUDE   = "Include in Export"
-FIELD_COMMENT   = "Export Comment"
-FIELD_HINT      = "Comment format"
+ATTRIBUTE_FOR           = "event"
+ATTRIBUTE_TAB           = "Timeline Export"
+FIELD_INCLUDE           = "Include in Export"
+FIELD_COMMENT           = "Export Comment"
+FIELD_HINT              = "Comment format"
+FIELD_OVERRIDE_CATEGORY = "Override Event Category"
 
 # Guards repeated full-table backfill within the same worker process lifetime.
 # Once every existing event has been checked after startup, there is no need to
@@ -34,6 +35,11 @@ _OUR_TAB_TEMPLATE = {
     FIELD_HINT: {
         "type": "html",
         "value": "<small class='text-muted'>Prefix lines with <code>-</code> for level-1 bullets or <code>--</code> for level-2 bullets.</small>",
+    },
+    FIELD_OVERRIDE_CATEGORY: {
+        "type": "input_string",
+        "value": "",
+        "mandatory": False,
     },
 }
 
@@ -143,3 +149,7 @@ def is_included(event) -> bool:
 
 def get_comment(event) -> str:
     return _get_attribute_field(event, FIELD_COMMENT, "") or ""
+
+
+def get_override_category(event) -> str:
+    return (_get_attribute_field(event, FIELD_OVERRIDE_CATEGORY, "") or "").strip()

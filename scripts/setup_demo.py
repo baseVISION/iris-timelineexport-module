@@ -222,7 +222,7 @@ with app.app_context():
     events_def = [
         # ── Day 1: 2026-04-01 ─────────────────────────────────────────────────
         (
-            datetime.datetime(2026, 4, 1, 6, 12, 0), "UTC",
+            datetime.datetime(2026, 4, 1, 6, 12, 0), "+00:00",
             "Spear-phishing email delivered", 4, True,
             "Sender: hr-noreply@contoso-corp[.]net\n"
             "- Subject: Q1 Salary Review Attached\n"
@@ -230,7 +230,7 @@ with app.app_context():
             "-- Macro present; auto-executes on open",
         ),
         (
-            datetime.datetime(2026, 4, 1, 6, 34, 0), "UTC",
+            datetime.datetime(2026, 4, 1, 6, 34, 0), "+00:00",
             "Victim opens malicious document", 5, True,
             "User: jsmith@victim.org (Finance)\n"
             "- Word spawns cmd.exe → powershell.exe\n"
@@ -238,7 +238,7 @@ with app.app_context():
             "- Beacon DLL dropped to %TEMP%\\MicrosoftUpdate.dll",
         ),
         (
-            datetime.datetime(2026, 4, 1, 6, 35, 22), "UTC",
+            datetime.datetime(2026, 4, 1, 6, 35, 22), "+00:00",
             "CobaltStrike beacon established", 13, True,
             "C2: https://update.windowssvc[.]net:443\n"
             "- Beacon type: HTTPS malleable profile\n"
@@ -246,20 +246,20 @@ with app.app_context():
             "-- Jitter applied; blends with browser traffic",
         ),
         (
-            datetime.datetime(2026, 4, 1, 7, 2, 0), "UTC",
+            datetime.datetime(2026, 4, 1, 7, 2, 0), "+00:00",
             "Scheduled task created for persistence", 6, True,
             "Task: \\Microsoft\\Windows\\MUICache\\UpdateTask\n"
             "- Runs MicrosoftUpdate.dll via rundll32 on logon\n"
             "- Created by: jsmith (standard user)",
         ),
         (
-            datetime.datetime(2026, 4, 1, 7, 15, 0), "UTC",
+            datetime.datetime(2026, 4, 1, 7, 15, 0), "+00:00",
             "Local user enumeration via net commands", 10, True,
             "net user /domain\nnet localgroup administrators\n"
             "- Output exfiltrated to C2 in beacon metadata",
         ),
         (
-            datetime.datetime(2026, 4, 1, 8, 0, 0), "UTC",
+            datetime.datetime(2026, 4, 1, 8, 0, 0), "+00:00",
             "Mimikatz run in memory (lsass dump)", 9, True,
             "Technique: sekurlsa::logonpasswords\n"
             "- Harvested: 3 NTLM hashes, 1 cleartext password\n"
@@ -267,14 +267,14 @@ with app.app_context():
             "-- Password: Backup@2025! (reused from AD)",
         ),
         (
-            datetime.datetime(2026, 4, 1, 8, 45, 0), "UTC",
+            datetime.datetime(2026, 4, 1, 8, 45, 0), "+00:00",
             "AV tampered — real-time protection disabled", 8, False,
             "Defender exclusion added via registry:\n"
             "HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Paths",
         ),
         # ── Day 2: 2026-04-02 ─────────────────────────────────────────────────
         (
-            datetime.datetime(2026, 4, 2, 1, 30, 0), "UTC",
+            datetime.datetime(2026, 4, 2, 1, 30, 0), "+00:00",
             "Pass-the-hash lateral movement to DC", 11, True,
             "Source: WKSTN-042 (jsmith)\n"
             "Target: DC01.victim.org\n"
@@ -282,14 +282,14 @@ with app.app_context():
             "-- PsExec remote service created on DC01",
         ),
         (
-            datetime.datetime(2026, 4, 2, 1, 55, 0), "UTC",
+            datetime.datetime(2026, 4, 2, 1, 55, 0), "+00:00",
             "Second beacon on Domain Controller", 13, True,
             "DC01 → new HTTPS beacon to same C2\n"
             "- Elevated: SYSTEM\n"
             "- Persistence: registry Run key added under HKLM",
         ),
         (
-            datetime.datetime(2026, 4, 2, 2, 10, 0), "UTC",
+            datetime.datetime(2026, 4, 2, 2, 10, 0), "+00:00",
             "Domain-wide GPO modified for persistence", 6, True,
             "GPO: Default Domain Policy\n"
             "- Startup script added: \\\\DC01\\SYSVOL\\...\\startup.bat\n"
@@ -297,14 +297,14 @@ with app.app_context():
             "-- Affects all workstations in domain",
         ),
         (
-            datetime.datetime(2026, 4, 2, 3, 5, 0), "UTC",
+            datetime.datetime(2026, 4, 2, 3, 5, 0), "+00:00",
             "File server share enumeration", 10, True,
             "net view /domain\nnet share on FS01\n"
             "- Identified Finance share: \\\\FS01\\Finance$\n"
             "- 2.3 TB of data accessible",
         ),
         (
-            datetime.datetime(2026, 4, 2, 3, 20, 0), "UTC",
+            datetime.datetime(2026, 4, 2, 3, 20, 0), "+00:00",
             "Sensitive data staged for exfiltration", 12, True,
             "7-Zip archive created: C:\\ProgramData\\backup.7z\n"
             "- Password: infected2026\n"
@@ -312,7 +312,7 @@ with app.app_context():
             "-- Approx. 18 GB compressed",
         ),
         (
-            datetime.datetime(2026, 4, 2, 4, 0, 0), "UTC",
+            datetime.datetime(2026, 4, 2, 4, 0, 0), "+00:00",
             "Data exfiltrated via HTTPS to cloud storage", 14, True,
             "Destination: hxxps://file[.]io/uXkA9q\n"
             "- Method: curl upload in 512 MB chunks\n"
@@ -320,7 +320,7 @@ with app.app_context():
             "-- Completed at 04:47 UTC",
         ),
         (
-            datetime.datetime(2026, 4, 2, 5, 10, 0), "UTC",
+            datetime.datetime(2026, 4, 2, 5, 10, 0), "+00:00",
             "Ransomware binary downloaded to DC01", 5, True,
             "File: C:\\Windows\\Temp\\svchost32.exe\n"
             "- SHA256: 7f3e…a812\n"
@@ -328,7 +328,7 @@ with app.app_context():
         ),
         # ── Day 3: 2026-04-03 ─────────────────────────────────────────────────
         (
-            datetime.datetime(2026, 4, 3, 3, 0, 0), "UTC",
+            datetime.datetime(2026, 4, 3, 3, 0, 0), "+00:00",
             "Ransomware deployed domain-wide via GPO startup script", 15, True,
             "Execution method: SYSTEM-level startup script via modified GPO\n"
             "- Estimated 140 workstations and 6 servers encrypted\n"
@@ -336,21 +336,21 @@ with app.app_context():
             "-- Shadow copies deleted: vssadmin delete shadows /all /quiet",
         ),
         (
-            datetime.datetime(2026, 4, 3, 3, 5, 0), "UTC",
+            datetime.datetime(2026, 4, 3, 3, 5, 0), "+00:00",
             "Ransom note dropped", 15, True,
             "Filename: RyukReadMe.txt placed in every directory\n"
             "- BTC wallet: 1Abc…XyZ9\n"
             "- Demand: 45 BTC (~1.8M USD at time of incident)",
         ),
         (
-            datetime.datetime(2026, 4, 3, 7, 30, 0), "UTC",
+            datetime.datetime(2026, 4, 3, 7, 30, 0), "+00:00",
             "Incident detected by SOC — help desk tickets spike", 1, True,
             "First alert: user unable to open files, sees .ryuk extension\n"
             "- 47 tickets in 30 minutes\n"
             "- SOC escalated to IR team at 07:45 UTC",
         ),
         (
-            datetime.datetime(2026, 4, 3, 8, 0, 0), "UTC",
+            datetime.datetime(2026, 4, 3, 8, 0, 0), "+00:00",
             "Network isolation — affected segments quarantined", 3, True,
             "VLAN ACLs pushed to block inter-segment traffic\n"
             "- DC01 isolated from workstation VLAN\n"
@@ -358,13 +358,13 @@ with app.app_context():
             "-- VPN gateway disabled to prevent spread",
         ),
         (
-            datetime.datetime(2026, 4, 3, 10, 0, 0), "UTC",
+            datetime.datetime(2026, 4, 3, 10, 0, 0), "+00:00",
             "IR team begins forensic imaging", 3, False,
             "Priority targets: DC01, WKSTN-042, FS01\n"
             "- FTK Imager used for live memory and disk captures",
         ),
         (
-            datetime.datetime(2026, 4, 3, 16, 0, 0), "UTC",
+            datetime.datetime(2026, 4, 3, 16, 0, 0), "+00:00",
             "Clean backups identified and restoration begins", 3, True,
             "Last clean backup: 2026-03-31 02:00 UTC\n"
             "- Restoration ETA: 72 hours for critical systems\n"

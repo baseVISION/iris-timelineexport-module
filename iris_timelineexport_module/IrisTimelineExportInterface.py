@@ -196,7 +196,6 @@ class IrisTimelineExportInterface(IrisModuleInterface):
             f"Timeline diagram exported ({len(marked)} events). "
             f"Downloads: {', '.join(download_urls)}"
         )
-        self.log.info(summary)
         self.message_queue.append(summary)
 
         return IrisInterfaceStatus.I2Success(
@@ -269,7 +268,6 @@ class IrisTimelineExportInterface(IrisModuleInterface):
             f"Presentation timeline exported ({len(slides)} slides). "
             f"Downloads: {', '.join(download_urls)}"
         )
-        self.log.info(summary)
         self.message_queue.append(summary)
 
         return IrisInterfaceStatus.I2Success(

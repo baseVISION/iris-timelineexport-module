@@ -29,10 +29,9 @@ from __future__ import annotations
 import io
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import NamedTuple, List, Optional, Tuple
 
-import pytz
 from PIL import Image, ImageDraw, ImageFont
 
 # ── Font paths ────────────────────────────────────────────────────────────────
@@ -105,34 +104,17 @@ class DayLayout(NamedTuple):
 # ── UTC conversion ────────────────────────────────────────────────────────────
 
 def _to_utc(dt: Optional[datetime], tz_str: Optional[str]) -> datetime:
-    """Return *dt* converted to UTC (naive).  Treats naive dt as UTC when no tz_str."""
+    """Return *dt* as a naive UTC datetime.
+
+    IRIS stores event_date already in UTC in the database; event_tz is metadata
+    about the original input timezone and must NOT be re-applied.  We only need
+    to strip any tzinfo that SQLAlchemy may have attached.
+    """
     if dt is None:
         return datetime.now(timezone.utc).replace(tzinfo=None)
-    if not tz_str:
-        if dt.tzinfo is not None:
-            return dt.astimezone(timezone.utc).replace(tzinfo=None)
-        # No timezone string and no tzinfo: treat as UTC (log so operators know)
-        _log.debug("No timezone for event timestamp; treating as UTC")
-        return dt
-    try:
-        if tz_str.lstrip("+-")[0:2].isdigit():
-            # Offset string like "+02:00" or "-05:00"
-            sign   = -1 if tz_str.startswith("-") else 1
-            parts  = tz_str.lstrip("+-").split(":")
-            offset = timedelta(hours=int(parts[0]),
-                               minutes=int(parts[1]) if len(parts) > 1 else 0)
-            tz = timezone(sign * offset)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=tz)
-            return dt.astimezone(timezone.utc).replace(tzinfo=None)
-        else:
-            tz = pytz.timezone(tz_str)
-            if dt.tzinfo is None:
-                dt = tz.localize(dt)
-            return dt.astimezone(pytz.utc).replace(tzinfo=None)
-    except Exception:
-        _log.warning("Could not parse timezone %r; treating timestamp as UTC", tz_str)
-        return dt.replace(tzinfo=None)
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 # ── Text helpers ──────────────────────────────────────────────────────────────
@@ -351,9 +333,12 @@ def render(
     # Attach comment from custom attributes (imported lazily to avoid
     # circular import; attribute_setup is always in the same package)
     try:
-        from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment
+        from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment, get_override_category
         for p in parsed:
             p["comment"] = get_comment(p["_ev"])
+            override = get_override_category(p["_ev"])
+            if override:
+                p["cat"] = override
     except Exception:
         _log.warning("Failed to load event comments from custom attributes", exc_info=True)
 
