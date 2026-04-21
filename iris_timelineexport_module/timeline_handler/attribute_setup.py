@@ -13,6 +13,7 @@ ATTRIBUTE_FOR   = "event"
 ATTRIBUTE_TAB   = "Timeline Export"
 FIELD_INCLUDE   = "Include in Export"
 FIELD_COMMENT   = "Export Comment"
+FIELD_HINT      = "Comment format"
 
 # Guards repeated full-table backfill within the same worker process lifetime.
 # Once every existing event has been checked after startup, there is no need to
@@ -24,16 +25,15 @@ _OUR_TAB_TEMPLATE = {
         "type": "input_checkbox",
         "value": False,
         "mandatory": False,
-        "description": "Mark this event for inclusion in the timeline diagram export",
     },
     FIELD_COMMENT: {
-        "type": "input_textarea",
+        "type": "input_textfield",
         "value": "",
         "mandatory": False,
-        "description": (
-            "Details shown below this event in the diagram. "
-            "Prefix lines with  -  for level-1 bullets or  --  for level-2 bullets."
-        ),
+    },
+    FIELD_HINT: {
+        "type": "html",
+        "value": "<small class='text-muted'>Prefix lines with <code>-</code> for level-1 bullets or <code>--</code> for level-2 bullets.</small>",
     },
 }
 

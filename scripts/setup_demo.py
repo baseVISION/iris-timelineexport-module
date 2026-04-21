@@ -209,7 +209,8 @@ with app.app_context():
         return {
             "Timeline Export": {
                 "Include in Export": {"type": "input_checkbox", "value": include, "mandatory": False},
-                "Export Comment":    {"type": "input_textarea", "value": comment,  "mandatory": False},
+                "Export Comment":    {"type": "input_textfield", "value": comment, "mandatory": False},
+                "Comment format":    {"type": "html", "value": "<small class='text-muted'>Prefix lines with <code>-</code> for level-1 bullets or <code>--</code> for level-2 bullets.</small>"},
             }
         }
 
