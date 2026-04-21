@@ -87,13 +87,14 @@ class DetailLine(NamedTuple):
 
 
 class EventLayout(NamedTuple):
-    side:          int              # +1 = right, -1 = left
-    date_utc:      datetime
-    category:      str
-    box_lines:     List[str]        # wrapped header lines
-    box_h:         int              # pixel height of the box
-    detail_lines:  List[DetailLine]
-    detail_h:      int              # pixel height of detail block
+    side:             int              # +1 = right, -1 = left
+    date_utc:         datetime
+    category:         str
+    box_lines:        List[str]        # wrapped header lines
+    box_h:            int              # pixel height of the box
+    detail_lines:     List[DetailLine]
+    detail_h:         int              # pixel height of detail block
+    box_header_lines: int = 1          # first N lines are time+cat; rest are event title
 
 
 class DayLayout(NamedTuple):
@@ -106,7 +107,7 @@ class DayLayout(NamedTuple):
 def _to_utc(dt: Optional[datetime], tz_str: Optional[str]) -> datetime:
     """Return *dt* converted to UTC (naive).  Treats naive dt as UTC when no tz_str."""
     if dt is None:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc).replace(tzinfo=None)
     if not tz_str:
         if dt.tzinfo is not None:
             return dt.astimezone(timezone.utc).replace(tzinfo=None)
@@ -263,6 +264,7 @@ def render(
     case_name: str,
     title_hex: str = "#AE0C0C",
     earliest_date = None,
+    title_in_box: bool = False,
 ) -> bytes:
     """
     Render a vertical DFIR-Report-style HDPI timeline PNG (2400px wide) and return it as bytes.
@@ -286,6 +288,7 @@ def render(
         "title_bar": _load_font(_FONT_BLACK, sz(24)),
         "day":       _load_font(_FONT_BOLD,  sz(14)),
         "box":       _load_font(_FONT_BOLD,  sz(13)),
+        "box_title": _load_font(_FONT_REG,   sz(13)),  # regular weight for title-in-box style
         "cmt":       _load_font(_FONT_REG,   sz(12)),  # use Regular instead of Light for legibility
     }
 
@@ -374,14 +377,23 @@ def render(
             layout_seq.append(DayLayout(label, DAY_BOX_H))
 
         header = f"{p['dt'].strftime('%H:%M')} UTC  {p['cat']}"
-        box_lines, box_h = _measure_box(
-            header, fonts["box"], BOX_W,
-            BOX_PAD_H, BOX_PAD_V, BOX_LINE_H, BOX_MIN_H,
-        )
+        if title_in_box and p["title"]:
+            title_wrapped    = _wrap(p["title"], fonts["box_title"], BOX_W - 2 * BOX_PAD_H)
+            box_lines        = [header] + title_wrapped
+            box_h            = max(BOX_MIN_H, len(box_lines) * BOX_LINE_H + 2 * BOX_PAD_V)
+            box_header_lines = 1
+            detail_title     = ""
+        else:
+            box_lines, box_h = _measure_box(
+                header, fonts["box"], BOX_W,
+                BOX_PAD_H, BOX_PAD_V, BOX_LINE_H, BOX_MIN_H,
+            )
+            box_header_lines = len(box_lines)
+            detail_title     = p["title"]
 
         comment_items = _parse_comment(p["comment"])
         detail_lines  = _build_detail_lines(
-            p["title"], comment_items, fonts, DETAIL_MAX_W,
+            detail_title, comment_items, fonts, DETAIL_MAX_W,
             TREE_INDENT_L0, TREE_INDENT_L1, TREE_INDENT_L2,
             TREE_H_LEN, TREE_TEXT_G,
         )
@@ -392,13 +404,14 @@ def render(
             detail_h = DETAIL_GAP + len(detail_lines) * CMT_LINE_H
 
         layout_seq.append(EventLayout(
-            side        = side,
-            date_utc    = p["dt"],
-            category    = p["cat"],
-            box_lines   = box_lines,
-            box_h       = box_h,
-            detail_lines= detail_lines,
-            detail_h    = detail_h,
+            side             = side,
+            date_utc         = p["dt"],
+            category         = p["cat"],
+            box_lines        = box_lines,
+            box_h            = box_h,
+            detail_lines     = detail_lines,
+            detail_h         = detail_h,
+            box_header_lines = box_header_lines,
         ))
         side = -side
 
@@ -521,9 +534,29 @@ def render(
 
         # Box header text
         ty_box = by1 + BOX_PAD_V
-        for ln in item.box_lines:
-            draw.text((bx1 + BOX_PAD_H, ty_box), ln,
-                      font=fonts["box"], fill=C_BOX_TEXT)
+        compact_box = len(item.box_lines) > item.box_header_lines
+        for i, ln in enumerate(item.box_lines):
+            if i < item.box_header_lines:
+                if i == 0 and compact_box:
+                    # compact style: time bold, category regular on same line
+                    split_idx = ln.find("UTC  ")
+                    if split_idx >= 0:
+                        time_part = ln[:split_idx + 5]
+                        cat_part  = ln[split_idx + 5:]
+                        draw.text((bx1 + BOX_PAD_H, ty_box), time_part,
+                                  font=fonts["box"], fill=C_BOX_TEXT)
+                        time_w = int(fonts["box"].getlength(time_part))
+                        draw.text((bx1 + BOX_PAD_H + time_w, ty_box), cat_part,
+                                  font=fonts["box_title"], fill=C_BOX_TEXT)
+                    else:
+                        draw.text((bx1 + BOX_PAD_H, ty_box), ln,
+                                  font=fonts["box"], fill=C_BOX_TEXT)
+                else:
+                    draw.text((bx1 + BOX_PAD_H, ty_box), ln,
+                              font=fonts["box"], fill=C_BOX_TEXT)
+            else:
+                draw.text((bx1 + BOX_PAD_H, ty_box), ln,
+                          font=fonts["box_title"], fill=C_EVTITLE)
             ty_box += BOX_LINE_H
 
         y_cur += item.box_h

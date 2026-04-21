@@ -144,9 +144,9 @@ class IrisTimelineExportInterface(IrisModuleInterface):
         download_urls = []
         try:
             # 1. Generate full complete timeline
-            png_bytes = render(marked, case_name, title_hex=title_color)
-            ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-            filename = f"timeline_export_full_{ts}.png"
+            png_bytes = render(marked, case_name, title_hex=title_color, title_in_box=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+            filename = f"{ts}_timeline.png"
             file_id = self._save_to_datastore(png_bytes, filename, case_id)
             if file_id:
                 download_urls.append(f"/datastore/file/view/{file_id}?cid={case_id}")
@@ -169,13 +169,13 @@ class IrisTimelineExportInterface(IrisModuleInterface):
                 for day, day_events in day_groups.items():
                     day_idx = day_num_map[day]
                     try:
-                        day_bytes = render(day_events, f"{case_name} - Day {day_idx}", title_hex=title_color, earliest_date=earliest)
-                        day_filename = f"timeline_export_day{day_idx}_{ts}.png"
+                        day_bytes = render(day_events, f"{case_name} - Day {day_idx}", title_hex=title_color, earliest_date=earliest, title_in_box=True)
+                        day_filename = f"{ts}_timeline_day{day_idx}.png"
                         d_id = self._save_to_datastore(day_bytes, day_filename, case_id)
                         if d_id:
                             download_urls.append(f"/datastore/file/view/{d_id}?cid={case_id}")
                     except Exception as e:
-                        self.log.error(f"Failed to render day {day_idx}: {e}")
+                        self.log.error("Failed to render day %d: %s", day_idx, e)
 
         except Exception as exc:
             msg = f"Failed to render timeline PNG: {exc}"
@@ -249,10 +249,10 @@ class IrisTimelineExportInterface(IrisModuleInterface):
                 data=data, logs=list(self.message_queue), message=msg,
             )
 
-        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         download_urls = []
         for png_bytes, slide_num in slides:
-            filename = f"timeline_presentation_{ts}_slide_{slide_num}.png"
+            filename = f"{ts}_timeline_presentation_slide{slide_num}.png"
             file_id = self._save_to_datastore(png_bytes, filename, case_id)
             if file_id:
                 download_urls.append(f"/datastore/file/view/{file_id}?cid={case_id}")

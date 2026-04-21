@@ -7,13 +7,16 @@ Uses an alternating top/bottom layout.
 from __future__ import annotations
 
 import io
+import os
 from datetime import datetime
 from typing import List, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
 # ── Font paths ────────────────────────────────────────────────────────────────
-_FONT_DIR  = "/usr/share/fonts/truetype/dejavu/"
+_FONT_DIR  = os.environ.get("IRIS_FONT_DIR", "/usr/share/fonts/truetype/dejavu/")
+if not _FONT_DIR.endswith("/"):
+    _FONT_DIR += "/"
 _FONT_REG  = _FONT_DIR + "DejaVuSans.ttf"
 _FONT_BOLD = _FONT_DIR + "DejaVuSans-Bold.ttf"
 
@@ -95,7 +98,7 @@ def render_presentation(
     # Parse and sort events
     parsed = []
     from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment
-    from iris_timelineexport_module.timeline_handler.png_renderer import _to_utc
+    from iris_timelineexport_module.timeline_handler.png_renderer import _to_utc, _parse_comment
     for ev in events_raw:
         dt = _to_utc(ev.event_date, ev.event_tz)
         cat = ev.category[0].name if ev.category else "Unknown"
@@ -172,8 +175,6 @@ def render_presentation(
                 x = segment_width * pos_idx
 
                 # ── Build text content ─────────────────────────────────────────
-                from iris_timelineexport_module.timeline_handler.png_renderer import _parse_comment
-                
                 time_str = ev_data["dt"].strftime("%H:%M UTC")
                 lines: list = [
                     (f"{time_str} - {ev_data['cat']}", f_date, C_BOX_TITLE),
@@ -186,8 +187,8 @@ def render_presentation(
                 for ci in _parse_comment(ev_data["comment"]):
                     if ci.level <= 1:
                         # First level comments are treated exactly like the event title in the main box
-                          prefix = "- " if ci.level == 1 else ""
-                          for wl in _wrap(prefix + ci.text, f_title, MAX_TEXT_W):
+                        prefix = "- " if ci.level == 1 else ""
+                        for wl in _wrap(prefix + ci.text, f_title, MAX_TEXT_W):
                             if wl:
                                 lines.append((wl, f_title, C_BOX_TITLE))
                     else:

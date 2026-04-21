@@ -114,7 +114,7 @@ def test_handle_export_success(monkeypatch):
 
     render_calls = []
 
-    def _fake_render(marked, case_name, title_hex="#AE0C0C", earliest_date=None):
+    def _fake_render(marked, case_name, title_hex="#AE0C0C", earliest_date=None, title_in_box=True):
         render_calls.append({"count": len(marked), "case_name": case_name, "title_hex": title_hex})
         return b"png-bytes"
 

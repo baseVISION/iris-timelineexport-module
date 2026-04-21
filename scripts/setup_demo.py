@@ -136,7 +136,7 @@ with app.app_context():
     marked = [ev for ev in all_events if is_included(ev)]
     print(f"  Found {len(marked)} / {len(all_events)} events marked for export.")
 
-    case_obj  = Cases.query.get(DEMO_CASE_ID)
+    case_obj  = db.session.get(Cases, DEMO_CASE_ID)
     case_name = case_obj.name.split(" - ", 1)[-1] if case_obj else f"Case {DEMO_CASE_ID}"
 
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -386,7 +386,8 @@ with app.app_context():
         ev.event_in_graph   = True
         ev.event_color      = ""
         ev.user_id          = user_id
-        ev.event_added      = datetime.datetime.utcnow()
+        ev.event_added      = datetime.datetime.now(datetime.timezone.utc)
+        ev.event_date_wtz   = ev_date
         ev.custom_attributes = _evt_attrs(include, comment)
 
         db.session.add(ev)
@@ -402,7 +403,7 @@ with app.app_context():
     print(f"  Inserted {len(events_def)} events into case {new_case_id}.")
 
     # ── Render and save exports for the new case ──────────────────────────────
-    new_case_obj   = Cases.query.get(new_case_id)
+    new_case_obj   = db.session.get(Cases, new_case_id)
     new_case_name  = new_case_obj.name
 
     new_events     = (
