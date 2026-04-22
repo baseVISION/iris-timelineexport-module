@@ -50,7 +50,6 @@ def ensure_attribute_exists(logger) -> None:
         from app import db
         from app.models.models import CustomAttribute
         from sqlalchemy.orm.attributes import flag_modified
-        from app.datamgmt.manage.manage_attribute_db import update_all_attributes
 
         ca = CustomAttribute.query.filter(
             CustomAttribute.attribute_for == ATTRIBUTE_FOR
@@ -66,66 +65,74 @@ def ensure_attribute_exists(logger) -> None:
             db.session.add(ca)
             db.session.commit()
             logger.info("Created CustomAttribute for events with Timeline Export tab")
-            update_all_attributes(ATTRIBUTE_FOR, {}, partial_overwrite=True)
-            return
+        else:
+            content = ca.attribute_content or {}
+            if ATTRIBUTE_TAB not in content:
+                content[ATTRIBUTE_TAB] = _OUR_TAB_TEMPLATE
+                ca.attribute_content = content
+                flag_modified(ca, "attribute_content")
+                db.session.commit()
+                logger.info("Added Timeline Export tab to event custom attributes")
+            else:
+                changed = False
+                for field_name, field_def in _OUR_TAB_TEMPLATE.items():
+                    if field_name not in content[ATTRIBUTE_TAB]:
+                        content[ATTRIBUTE_TAB][field_name] = field_def
+                        changed = True
+                        logger.info("Added missing field '%s' to Timeline Export tab", field_name)
+                if changed:
+                    ca.attribute_content = content
+                    flag_modified(ca, "attribute_content")
+                    db.session.commit()
 
-        content = ca.attribute_content or {}
-
-        # Backfill individual event records once per process lifetime.
-        # (update_all_attributes only fills in missing *tabs*, not missing fields
-        # within a tab that already exists on a record.)
+        # Propagate to individual event records once per process lifetime.
+        # Never calls update_all_attributes — that function resets entire tab
+        # values with partial_overwrite=True, wiping user-entered data.
         global _backfill_done
         if not _backfill_done:
             _propagate_missing_fields(logger)
             _backfill_done = True
-
-        if ATTRIBUTE_TAB in content:
-            changed = False
-            for field_name, field_def in _OUR_TAB_TEMPLATE.items():
-                if field_name not in content[ATTRIBUTE_TAB]:
-                    content[ATTRIBUTE_TAB][field_name] = field_def
-                    changed = True
-                    logger.info("Added missing field '%s' to Timeline Export tab", field_name)
-            if changed:
-                ca.attribute_content = content
-                flag_modified(ca, "attribute_content")
-                db.session.commit()
-                update_all_attributes(ATTRIBUTE_FOR, {}, partial_overwrite=True)
-        else:
-            content[ATTRIBUTE_TAB] = _OUR_TAB_TEMPLATE
-            ca.attribute_content = content
-            flag_modified(ca, "attribute_content")
-            db.session.commit()
-            logger.info("Added Timeline Export tab to event custom attributes")
-            update_all_attributes(ATTRIBUTE_FOR, {}, partial_overwrite=True)
 
     except Exception:
         logger.exception("Failed to ensure Timeline Export custom attribute")
 
 
 def _propagate_missing_fields(logger) -> None:
-    """Add any fields from _OUR_TAB_TEMPLATE that are absent from existing event records."""
+    """Add any fields from _OUR_TAB_TEMPLATE that are absent from existing event records.
+
+    Handles two cases:
+    - Tab entirely absent: adds the full template (preserving all other tabs).
+    - Tab present but missing fields: adds only the missing fields.
+    Never touches existing field values — purely additive.
+    """
     try:
         from app import db
         from app.models.cases import CasesEvent
         from sqlalchemy.orm.attributes import flag_modified
+        import copy
 
-        events = CasesEvent.query.filter(CasesEvent.custom_attributes.isnot(None)).all()
+        events = CasesEvent.query.all()
         updated = 0
         for event in events:
             attrs = event.custom_attributes or {}
             tab = attrs.get(ATTRIBUTE_TAB)
-            if tab is None:
-                continue
             changed = False
-            for field_name, field_def in _OUR_TAB_TEMPLATE.items():
-                if field_name not in tab:
-                    tab[field_name] = field_def
-                    changed = True
+
+            if tab is None:
+                # Tab missing entirely — add it with default values
+                attrs[ATTRIBUTE_TAB] = copy.deepcopy(_OUR_TAB_TEMPLATE)
+                changed = True
+            else:
+                for field_name, field_def in _OUR_TAB_TEMPLATE.items():
+                    if field_name not in tab:
+                        tab[field_name] = field_def
+                        changed = True
+
             if changed:
                 event.custom_attributes = attrs
                 flag_modified(event, "custom_attributes")
                 updated += 1
+
         if updated:
             db.session.commit()
             logger.info("Backfilled missing Timeline Export fields on %d event(s)", updated)
