@@ -94,6 +94,8 @@ class EventLayout(NamedTuple):
     detail_lines:     List[DetailLine]
     detail_h:         int              # pixel height of detail block
     box_header_lines: int = 1          # first N lines are time+cat; rest are event title
+    box_border_color: Optional[Tuple[int, int, int]] = None  # None = use default
+    box_border_w:     int = 1
 
 
 class DayLayout(NamedTuple):
@@ -247,6 +249,9 @@ def render(
     title_hex: str = "#AE0C0C",
     earliest_date = None,
     title_in_box: bool = False,
+    anon_map: dict = None,
+    highlight_hex: str = None,
+    cat_colors: dict = None,
 ) -> bytes:
     """
     Render a vertical DFIR-Report-style HDPI timeline PNG (2400px wide) and return it as bytes.
@@ -323,24 +328,39 @@ def render(
         dt_utc = _to_utc(ev.event_date, ev.event_tz)
         cat    = ev.category[0].name if ev.category else "Unknown"
         parsed.append({
-            "dt":      dt_utc,
-            "cat":     cat,
-            "title":   (ev.event_title or "").strip(),
-            "comment": "",  # filled below via attribute_setup helper
-            "_ev":     ev,
+            "dt":        dt_utc,
+            "cat":       cat,
+            "title":     (ev.event_title or "").strip(),
+            "comment":   "",     # filled below via attribute_setup helper
+            "highlight": False,  # filled below
+            "_ev":       ev,
         })
 
-    # Attach comment from custom attributes (imported lazily to avoid
-    # circular import; attribute_setup is always in the same package)
+    # Attach comment, highlight flag and category override from custom attributes
+    # (imported lazily to avoid circular import; attribute_setup is always in the same package)
     try:
-        from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment, get_override_category
+        from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment, get_override_category, get_highlight
         for p in parsed:
-            p["comment"] = get_comment(p["_ev"])
+            p["comment"]   = get_comment(p["_ev"])
+            p["highlight"] = get_highlight(p["_ev"])
             override = get_override_category(p["_ev"])
             if override:
                 p["cat"] = override
     except Exception:
         _log.warning("Failed to load event comments from custom attributes", exc_info=True)
+
+    # Apply anonymization substitutions
+    if anon_map:
+        try:
+            from iris_timelineexport_module.timeline_handler.attribute_setup import apply_anon_map
+        except Exception:
+            _log.warning("Failed to import apply_anon_map — skipping anonymization", exc_info=True)
+            anon_map = {}
+    if anon_map:
+        for p in parsed:
+            p["title"]   = apply_anon_map(p["title"],   anon_map)
+            p["cat"]     = apply_anon_map(p["cat"],     anon_map)
+            p["comment"] = apply_anon_map(p["comment"], anon_map)
 
     parsed.sort(key=lambda x: x["dt"])
 
@@ -388,6 +408,20 @@ def render(
         if detail_lines:
             detail_h = DETAIL_GAP + len(detail_lines) * CMT_LINE_H
 
+        # Resolve box border color: highlight > category color > default
+        border_color: Optional[Tuple[int, int, int]] = None
+        border_w = 1
+        if p["highlight"] and highlight_hex:
+            hc = _hex_to_rgb(highlight_hex)
+            if hc:
+                border_color = hc
+                border_w = sz(3)   # ~6px at final 2400px after 2× downsample
+        if border_color is None and cat_colors and p["cat"] in cat_colors:
+            cc = _hex_to_rgb(cat_colors[p["cat"]])
+            if cc:
+                border_color = cc
+                border_w = sz(2)   # ~4px at final 2400px after 2× downsample
+
         layout_seq.append(EventLayout(
             side             = side,
             date_utc         = p["dt"],
@@ -397,6 +431,8 @@ def render(
             detail_lines     = detail_lines,
             detail_h         = detail_h,
             box_header_lines = box_header_lines,
+            box_border_color = border_color,
+            box_border_w     = border_w,
         ))
         side = -side
 
@@ -512,9 +548,10 @@ def render(
             [(bx1 + 2, by1 + 2), (bx2 + 2, by2 + 2)],
             radius=BOX_CORNER, fill=C_BOX_SHADOW,
         )
+        box_outline = item.box_border_color if item.box_border_color is not None else C_BOX_BORDER
         draw.rounded_rectangle(
             [(bx1, by1), (bx2, by2)],
-            radius=BOX_CORNER, fill=C_BOX_BG, outline=C_BOX_BORDER, width=1,
+            radius=BOX_CORNER, fill=C_BOX_BG, outline=box_outline, width=item.box_border_w,
         )
 
         # Box header text

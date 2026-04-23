@@ -51,6 +51,16 @@ def _hex_to_rgba(hex_str: str, alpha: int = 255) -> Tuple[int, int, int, int]:
     except ValueError:
         return (174, 12, 12, alpha)
 
+def _hex_to_rgba_safe(hex_str: str, alpha: int = 255) -> "Tuple[int, int, int, int] | None":
+    """Like _hex_to_rgba but returns None on invalid input instead of a fallback."""
+    h = hex_str.lstrip("#")
+    if len(h) != 6:
+        return None
+    try:
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha)
+    except ValueError:
+        return None
+
 def _wrap(text: str, font: ImageFont.FreeTypeFont, max_px: int) -> List[str]:
     if not text:
         return []
@@ -96,7 +106,10 @@ def render_presentation(
     events_raw: list, 
     case_name: str, 
     title_hex: str = "#AE0C0C", 
-    events_per_slide: int = 5
+    events_per_slide: int = 5,
+    anon_map: dict = None,
+    highlight_hex: str = None,
+    cat_colors: dict = None,
 ) -> List[Tuple[bytes, int]]:
     """
     Renders 16:9 transparent PNGs. Returns a list of tuples: (png_bytes, slide_number).
@@ -118,7 +131,7 @@ def render_presentation(
 
     # Parse and sort events
     parsed = []
-    from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment, get_override_category
+    from iris_timelineexport_module.timeline_handler.attribute_setup import get_comment, get_override_category, get_highlight
     from iris_timelineexport_module.timeline_handler.png_renderer import _to_utc, _parse_comment
     for ev in events_raw:
         dt = _to_utc(ev.event_date, ev.event_tz)
@@ -134,8 +147,20 @@ def render_presentation(
             comment = get_comment(ev)
         except Exception:
             comment = ""
-        parsed.append({"dt": dt, "cat": cat, "title": title, "comment": comment, "_ev": ev})
+        try:
+            highlight = get_highlight(ev)
+        except Exception:
+            highlight = False
+        parsed.append({"dt": dt, "cat": cat, "title": title, "comment": comment, "highlight": highlight, "_ev": ev})
     parsed.sort(key=lambda x: x["dt"])
+
+    # Apply anonymization substitutions
+    if anon_map:
+        from iris_timelineexport_module.timeline_handler.attribute_setup import apply_anon_map
+        for p in parsed:
+            p["title"]   = apply_anon_map(p["title"],   anon_map)
+            p["cat"]     = apply_anon_map(p["cat"],     anon_map)
+            p["comment"] = apply_anon_map(p["comment"], anon_map)
 
     # Map dates to day numbers based on the earliest event
     unique_days = sorted({p["dt"].date() for p in parsed})
@@ -265,11 +290,27 @@ def render_presentation(
             draw.ellipse([(x - r_outer, CY - r_outer), (x + r_outer, CY + r_outer)], fill=C_NODE_BORDER)
             draw.ellipse([(x - r_inner, CY - r_inner), (x + r_inner, CY + r_inner)], fill=node_color)
 
-            # ── Draw main box ──────────────────────────────────────────────
+            # ── Resolve box border: highlight > category color > default ──────────────
+            box_outline = C_BOX_BORDER
+            box_border_w = 6
+            highlight_applied = False
+            if ev_data.get("highlight") and highlight_hex:
+                hc = _hex_to_rgba_safe(highlight_hex)
+                if hc:
+                    box_outline = hc
+                    box_border_w = 18
+                    highlight_applied = True
+            if not highlight_applied and cat_colors and ev_data["cat"] in cat_colors:
+                cc = _hex_to_rgba_safe(cat_colors[ev_data["cat"]])
+                if cc:
+                    box_outline = cc
+                    box_border_w = 10
+
+            # ── Draw main box ──────────────────────────────────────────────────
             bx1 = x - (BOX_W // 2)
             bx2 = x + (BOX_W // 2)
             draw.rounded_rectangle([(bx1, by1), (bx2, by2)], radius=24,
-                                    fill=C_BOX_BG, outline=C_BOX_BORDER, width=6)
+                                    fill=C_BOX_BG, outline=box_outline, width=box_border_w)
 
             # ── Draw main text ─────────────────────────────────────────────
             ty = by1 + BOX_PAD

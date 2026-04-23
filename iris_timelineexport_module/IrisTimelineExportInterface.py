@@ -22,7 +22,12 @@ from iris_interface import IrisInterfaceStatus
 import iris_timelineexport_module.IrisTimelineExportConfig as conf
 from iris_timelineexport_module.timeline_handler.attribute_setup import (
     ensure_attribute_exists,
+    ensure_case_attribute_exists,
     is_included,
+    get_anon_map_raw,
+    parse_anon_map,
+    parse_cat_colors,
+    apply_anon_map,
 )
 from iris_timelineexport_module.timeline_handler.png_renderer import render
 from iris_timelineexport_module.timeline_handler.presentation_renderer import render_presentation
@@ -44,8 +49,9 @@ class IrisTimelineExportInterface(IrisModuleInterface):
     def register_hooks(self, module_id: int) -> None:
         self.module_id = module_id
 
-        # Ensure the custom attribute tab exists on events
+        # Ensure the custom attribute tabs exist on events and cases
         ensure_attribute_exists(self.log)
+        ensure_case_attribute_exists(self.log)
 
         # Register the manual trigger on the case
         self.register_to_hook(
@@ -57,6 +63,16 @@ class IrisTimelineExportInterface(IrisModuleInterface):
             module_id,
             iris_hook_name="on_manual_trigger_case",
             manual_hook_name="Export Timeline (PPTX-ready 16:9)",
+        )
+        self.register_to_hook(
+            module_id,
+            iris_hook_name="on_manual_trigger_case",
+            manual_hook_name="Export Timeline Diagram (Anonymized)",
+        )
+        self.register_to_hook(
+            module_id,
+            iris_hook_name="on_manual_trigger_case",
+            manual_hook_name="Export Timeline (PPTX-ready 16:9, Anonymized)",
         )
         self.log.info("IrisTimelineExport: hooks registered")
 
@@ -74,6 +90,10 @@ class IrisTimelineExportInterface(IrisModuleInterface):
         if hook_name == "on_manual_trigger_case":
             if hook_ui_name == "Export Timeline (PPTX-ready 16:9)":
                 return self._handle_export_presentation(data)
+            elif hook_ui_name == "Export Timeline Diagram (Anonymized)":
+                return self._handle_export(data, anonymized=True)
+            elif hook_ui_name == "Export Timeline (PPTX-ready 16:9, Anonymized)":
+                return self._handle_export_presentation(data, anonymized=True)
             else:
                 return self._handle_export(data)
 
@@ -101,7 +121,7 @@ class IrisTimelineExportInterface(IrisModuleInterface):
 
     # ── Export logic ──────────────────────────────────────────────────────────
 
-    def _handle_export(self, data: Any) -> IrisInterfaceStatus:
+    def _handle_export(self, data: Any, anonymized: bool = False) -> IrisInterfaceStatus:
         try:
             cases_obj = self._extract_case_obj(data)
         except ValueError as exc:
@@ -114,12 +134,28 @@ class IrisTimelineExportInterface(IrisModuleInterface):
         raw_name  = cases_obj.name or f"Case {case_id}"
         case_name = re.sub(r"^#\d+\s*[-–]\s*", "", raw_name).strip()
 
-        self.log.info("Exporting timeline for case %s: %s", case_id, case_name)
+        self.log.info("Exporting timeline for case %s: %s (anonymized=%s)", case_id, case_name, anonymized)
 
         # ── Load module config ────────────────────────────────────────────────
         status = self.get_configuration_dict()
         cfg    = status.get_data() if status.is_success() else {}
-        title_color = str(cfg.get("timeline_title_color", "#AE0C0C"))
+        title_color     = str(cfg.get("timeline_title_color",     "#AE0C0C"))
+        highlight_color = str(cfg.get("timeline_highlight_color", "#FF8C00"))
+
+        # ── Load anonymization map if requested ────────────────────────────────────
+        anon_map = {}
+        if anonymized:
+            raw_map = get_anon_map_raw(cases_obj)
+            anon_map = parse_anon_map(raw_map)
+            self.log.info("Anonymization map has %d entries", len(anon_map))
+
+        # ── Apply anonymization to case name ─────────────────────────────────────
+        display_case_name = apply_anon_map(case_name, anon_map) if anon_map else case_name
+        file_suffix = "_anon" if anonymized else ""
+
+        # ── Load category color map ──────────────────────────────────────────────
+        cat_colors = parse_cat_colors(str(cfg.get("timeline_category_colors", "")))
+        self.log.info("Category color map has %d entries", len(cat_colors))
 
         # ── Query events ──────────────────────────────────────────────────────
         try:
@@ -144,9 +180,9 @@ class IrisTimelineExportInterface(IrisModuleInterface):
         download_urls = []
         try:
             # 1. Generate full complete timeline
-            png_bytes = render(marked, case_name, title_hex=title_color, title_in_box=True)
+            png_bytes = render(marked, display_case_name, title_hex=title_color, title_in_box=True, anon_map=anon_map, highlight_hex=highlight_color, cat_colors=cat_colors)
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-            filename = f"{ts}_timeline.png"
+            filename = f"{ts}_timeline{file_suffix}.png"
             file_id = self._save_to_datastore(png_bytes, filename, case_id)
             if file_id:
                 download_urls.append(f"/datastore/file/view/{file_id}?cid={case_id}")
@@ -169,8 +205,8 @@ class IrisTimelineExportInterface(IrisModuleInterface):
                 for day, day_events in day_groups.items():
                     day_idx = day_num_map[day]
                     try:
-                        day_bytes = render(day_events, f"{case_name} - Day {day_idx}", title_hex=title_color, earliest_date=earliest, title_in_box=True)
-                        day_filename = f"{ts}_timeline_day{day_idx}.png"
+                        day_bytes = render(day_events, f"{display_case_name} - Day {day_idx}", title_hex=title_color, earliest_date=earliest, title_in_box=True, anon_map=anon_map, highlight_hex=highlight_color, cat_colors=cat_colors)
+                        day_filename = f"{ts}_timeline_day{day_idx}{file_suffix}.png"
                         d_id = self._save_to_datastore(day_bytes, day_filename, case_id)
                         if d_id:
                             download_urls.append(f"/datastore/file/view/{d_id}?cid={case_id}")
@@ -202,7 +238,7 @@ class IrisTimelineExportInterface(IrisModuleInterface):
             data=data, logs=list(self.message_queue),
         )
 
-    def _handle_export_presentation(self, data: Any) -> IrisInterfaceStatus:
+    def _handle_export_presentation(self, data: Any, anonymized: bool = False) -> IrisInterfaceStatus:
         try:
             cases_obj = self._extract_case_obj(data)
         except ValueError as exc:
@@ -215,11 +251,24 @@ class IrisTimelineExportInterface(IrisModuleInterface):
         raw_name  = cases_obj.name or f"Case {case_id}"
         case_name = re.sub(r"^#\d+\s*[-–]\s*", "", raw_name).strip()
 
-        self.log.info("Exporting presentation timeline for case %s: %s", case_id, case_name)
+        self.log.info("Exporting presentation timeline for case %s: %s (anonymized=%s)", case_id, case_name, anonymized)
 
         status = self.get_configuration_dict()
         cfg    = status.get_data() if status.is_success() else {}
-        title_color = str(cfg.get("timeline_title_color", "#AE0C0C"))
+        title_color     = str(cfg.get("timeline_title_color",     "#AE0C0C"))
+        highlight_color = str(cfg.get("timeline_highlight_color", "#FF8C00"))
+
+        anon_map = {}
+        if anonymized:
+            raw_map = get_anon_map_raw(cases_obj)
+            anon_map = parse_anon_map(raw_map)
+            self.log.info("Anonymization map has %d entries", len(anon_map))
+
+        display_case_name = apply_anon_map(case_name, anon_map) if anon_map else case_name
+        file_suffix = "_anon" if anonymized else ""
+
+        cat_colors = parse_cat_colors(str(cfg.get("timeline_category_colors", "")))
+        self.log.info("Category color map has %d entries", len(cat_colors))
 
         try:
             from app.models.cases import CasesEvent
@@ -240,7 +289,7 @@ class IrisTimelineExportInterface(IrisModuleInterface):
         self.log.info("%d of %d events marked for presentation export", len(marked), len(all_events))
 
         try:
-            slides = render_presentation(marked, case_name, title_hex=title_color, events_per_slide=5)
+            slides = render_presentation(marked, display_case_name, title_hex=title_color, events_per_slide=5, anon_map=anon_map, highlight_hex=highlight_color, cat_colors=cat_colors)
         except Exception as exc:
             msg = f"Failed to render presentation PNGs: {exc}"
             self.log.error(msg, exc_info=True)
@@ -251,7 +300,7 @@ class IrisTimelineExportInterface(IrisModuleInterface):
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         download_urls = []
         for png_bytes, slide_num in slides:
-            filename = f"{ts}_timeline_presentation_slide{slide_num}.png"
+            filename = f"{ts}_timeline_presentation_slide{slide_num}{file_suffix}.png"
             file_id = self._save_to_datastore(png_bytes, filename, case_id)
             if file_id:
                 download_urls.append(f"/datastore/file/view/{file_id}?cid={case_id}")
