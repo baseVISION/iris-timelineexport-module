@@ -35,15 +35,16 @@ from typing import NamedTuple, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFont
 
 # ── Font paths ────────────────────────────────────────────────────────────────
-# Override the font directory by setting the IRIS_FONT_DIR environment variable,
-# e.g. for local development: export IRIS_FONT_DIR=/usr/share/fonts/truetype/dejavu
-_LATO_DIR   = os.environ.get("IRIS_FONT_DIR", "/iriswebapp/app/static/assets/fonts/lato")
-if not _LATO_DIR.endswith("/"):
-    _LATO_DIR += "/"
-_FONT_REG   = _LATO_DIR + "Lato-Regular.ttf"
-_FONT_BOLD  = _LATO_DIR + "Lato-Bold.ttf"
-_FONT_LIGHT = _LATO_DIR + "Lato-Light.ttf"
-_FONT_BLACK = _LATO_DIR + "Lato-Black.ttf"
+# DejaVu Sans ships in the container and covers the full Latin Extended range
+# including en/em dashes, smart quotes and other common Unicode punctuation.
+# Override the font directory with IRIS_FONT_DIR if needed.
+_FONT_DIR   = os.environ.get("IRIS_FONT_DIR", "/usr/share/fonts/truetype/dejavu")
+if not _FONT_DIR.endswith("/"):
+    _FONT_DIR += "/"
+_FONT_REG   = _FONT_DIR + "DejaVuSans.ttf"
+_FONT_BOLD  = _FONT_DIR + "DejaVuSans-Bold.ttf"
+_FONT_LIGHT = _FONT_DIR + "DejaVuSans.ttf"        # no Light variant; use Regular
+_FONT_BLACK = _FONT_DIR + "DejaVuSans-Bold.ttf"   # no Black variant; use Bold
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 C_BG          = (255, 255, 255)
@@ -137,6 +138,7 @@ def _load_font(path: str, size: int) -> ImageFont.FreeTypeFont:
 def _text_w(font: ImageFont.FreeTypeFont, text: str) -> int:
     bb = font.getbbox(text)
     return bb[2] - bb[0]
+
 
 
 def _wrap(text: str, font: ImageFont.FreeTypeFont, max_px: int) -> List[str]:

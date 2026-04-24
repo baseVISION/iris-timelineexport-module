@@ -4,7 +4,7 @@ module_description = (
     "and saves it to the case Datastore."
 )
 interface_version = "1.2.0"
-module_version = "1.1.0"
+module_version = "1.1.1"
 
 pipeline_support = False
 pipeline_info = {}
